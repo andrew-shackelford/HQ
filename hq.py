@@ -115,14 +115,11 @@ class Helper:
         self.a2_thread.stop()
         self.a3_thread.stop()
 
-
 def main():
     helper = Helper()
     helper.run_ocr()
     helper.print_ocr()
     helper.stop()
-
-
 
 if __name__ == "__main__":
     main()
