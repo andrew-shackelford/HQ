@@ -1,11 +1,29 @@
 from PIL import Image
 import pytesseract
-import argparse
 import os
 import subprocess
 import time
+import threading
+import Queue
 
-class OCR:
+class OCR(threading.Thread):
+
+    def __init__(self, q, id):
+        self.q = q
+        self.id = id
+        self.should_run = True
+        threading.Thread.__init__(self)
+
+    def run(self):
+        while self.should_run:
+            s = pytesseract.image_to_string(self.q.get())
+            self.q.put(s.replace('\n', ' '))
+            time.sleep(1) #allow for us to pick image back up
+
+    def stop(self):
+        self.should_run = False
+
+class Imager:
 
     def __init__(self, directory='~/Documents/hq/', phone_type='x'):
         self.directory = directory
@@ -43,58 +61,67 @@ class OCR:
                 'hq.png'
             ])
             self.img = Image.open('hq.png')
-            print(time.time())
 
             self.q_img = self.img.crop((self.q_x, self.q_y, self.q_width, self.q_height))
             self.a_img_1 = self.img.crop((self.a_x, self.a1_y, self.a_width, self.a1_height))
             self.a_img_2 = self.img.crop((self.a_x, self.a2_y, self.a_width, self.a2_height))
             self.a_img_3 = self.img.crop((self.a_x, self.a3_y, self.a_width, self.a3_height))
 
-            self.q_img.save("q.png")
-            self.a_img_1.save("a1.png")
-            self.a_img_2.save("a2.png")
-            self.a_img_3.save("a3.png")
+class Helper:
 
-    def ocr_image(self):
-        self.q = pytesseract.image_to_string(self.q_img)
-        self.a_1 = pytesseract.image_to_string(self.a_img_1)
-        self.a_2 = pytesseract.image_to_string(self.a_img_2)
-        self.a_3 = pytesseract.image_to_string(self.a_img_3)
+    def __init__(self):
+        self.imager = Imager()
+
+        self.q_que = Queue.Queue()
+        self.a1_que = Queue.Queue()
+        self.a2_que = Queue.Queue()
+        self.a3_que = Queue.Queue()
+
+        self.q_thread = OCR(self.q_que, "q")
+        self.a1_thread = OCR(self.a1_que, "a1")
+        self.a2_thread = OCR(self.a2_que, "a2")
+        self.a3_thread = OCR(self.a3_que, "a3")
+
+        self.q_thread.start()
+        self.a1_thread.start()
+        self.a2_thread.start()
+        self.a3_thread.start()
+
+    def run_ocr(self):
+        self.imager.get_quicktime_image()
+
+        self.q_que.put(self.imager.q_img)
+        self.a1_que.put(self.imager.a_img_1)
+        self.a2_que.put(self.imager.a_img_2)
+        self.a3_que.put(self.imager.a_img_3)
+
+        time.sleep(0.01) # allow time for threads to get images
+        os.remove('hq.png') # put this here so it can take as much time as it needs while threads run
+
+        self.q = self.q_que.get()
+        self.a1 = self.a1_que.get()
+        self.a2 = self.a2_que.get()
+        self.a3 = self.a3_que.get()
 
     def print_ocr(self):
-        print("Question:")
         print(self.q)
-        print("")
-        print("Answer 1:")
-        print(self.a_1)
-        print("")
-        print("Answer 2:")
-        print(self.a_2)
-        print("")
-        print("Answer 3:")
-        print(self.a_3)
+        print(self.a1)
+        print(self.a2)
+        print(self.a3)
 
-    def del_image(self):
-        os.remove('hq.png')
-        os.remove('q.png')
-        os.remove('a1.png')
-        os.remove('a2.png')
-        os.remove('a3.png')
+    def stop(self):
+        self.q_thread.stop()
+        self.a1_thread.stop()
+        self.a2_thread.stop()
+        self.a3_thread.stop()
 
-    def run(self):
-        print(time.time())
-        self.get_quicktime_image()
-        print(time.time())
-        self.ocr_image()
-        print(time.time())
-        self.print_ocr()
-        print(time.time())
-        self.del_image()
-        print(time.time())
 
 def main():
-    ocr = OCR()
-    ocr.run()
+    helper = Helper()
+    helper.run_ocr()
+    helper.print_ocr()
+    helper.stop()
+
 
 
 if __name__ == "__main__":
