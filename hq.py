@@ -1,10 +1,34 @@
 from PIL import Image
+import nltk
 import pytesseract
 import os
 import subprocess
 import time
 import threading
 import Queue
+import requests
+from bs4 import BeautifulSoup
+import argparse
+
+class Search(threading.Thread):
+    def __init__(self, q, id):
+        self.q = q
+        self.id = id
+        self.should_run = True
+        threading.Thread.__init__(self)
+
+    def run(self):
+        while self.should_run:
+            r = requests.get("https://www.google.com/search", params={'q':self.q.get()})
+
+            soup = BeautifulSoup(r.text, "lxml")
+            res = soup.find("div", {"id": "resultStats"})
+            self.q.put(res.text)
+            time.sleep(1) #allow for us to pick image back up
+
+    def stop(self):
+        self.should_run = False
+
 
 class OCR(threading.Thread):
 
@@ -67,10 +91,64 @@ class Imager:
             self.a_img_2 = self.img.crop((self.a_x, self.a2_y, self.a_width, self.a2_height))
             self.a_img_3 = self.img.crop((self.a_x, self.a3_y, self.a_width, self.a3_height))
 
+class Answer:
+
+    def __init__(self):
+        self.a1_que = Queue.Queue()
+        self.a2_que = Queue.Queue()
+        self.a3_que = Queue.Queue()
+
+        self.a1_thread = Search(self.a1_que, "a1")
+        self.a2_thread = Search(self.a2_que, "a2")
+        self.a3_thread = Search(self.a3_que, "a3")
+
+        self.a1_thread.start()
+        self.a2_thread.start()
+        self.a3_thread.start()
+
+    def num_hits(self, q, a1, a2, a3):
+        print(time.time())
+        tokens = nltk.word_tokenize(q)
+        tagged = nltk.pos_tag(tokens)
+        nouns = [word for word,pos in tagged \
+            if (pos == 'NN' or pos == 'NNP' or pos == 'NNS' or pos == 'NNPS')]
+        downcased = [x.lower() for x in nouns]
+        q_nouns = " ".join(downcased)
+
+        self.a1_que.put(q_nouns + ' ' + a1)
+        self.a2_que.put(q_nouns + ' ' + a2)
+        self.a3_que.put(q_nouns + ' ' + a3)
+
+        time.sleep(0.1) # allow time for threads to get images
+
+        self.a1 = int(self.a1_que.get().replace(",", "").split()[1])
+        self.a2 = int(self.a2_que.get().replace(",", "").split()[1])
+        self.a3 = int(self.a3_que.get().replace(",", "").split()[1])
+
+        self.sum = float(self.a1 + self.a2 + self.a3)
+        self.a1_per = round(float(self.a1*100)/self.sum, 2)
+        self.a2_per = round(float(self.a2*100)/self.sum, 2)
+        self.a3_per = round(float(self.a3*100)/self.sum, 2)
+
+        return {'a1' : self.a1,
+                'a2' : self.a2,
+                'a3' : self.a3,
+                'sum' : self.sum,
+                'a1_per' : self.a1_per,
+                'a2_per' : self.a2_per,
+                'a3_per' : self.a3_per}
+
+    def stop(self):
+        self.a1_thread.stop()
+        self.a2_thread.stop()
+        self.a3_thread.stop()
+
+
 class Helper:
 
     def __init__(self):
         self.imager = Imager()
+        self.answer = Answer()
 
         self.q_que = Queue.Queue()
         self.a1_que = Queue.Queue()
@@ -109,17 +187,30 @@ class Helper:
         print(self.a2)
         print(self.a3)
 
+    def print_hits(self):
+        print(self.a1 + ": " + str(self.percent_hits['a1_per']))
+        print(self.a2 + ": " + str(self.percent_hits['a2_per']))
+        print(self.a3 + ": " + str(self.percent_hits['a3_per']))
+
+    def search_hits(self):
+        self.percent_hits = self.answer.num_hits(self.q, self.a1, self.a2, self.a3)
+
     def stop(self):
         self.q_thread.stop()
         self.a1_thread.stop()
         self.a2_thread.stop()
         self.a3_thread.stop()
+        self.answer.stop()
 
 def main():
     helper = Helper()
-    helper.run_ocr()
-    helper.print_ocr()
-    helper.stop()
+
+    while True:
+        waiting = raw_input()
+        helper.run_ocr()
+        #helper.print_ocr()
+        helper.search_hits()
+        helper.print_hits()
 
 if __name__ == "__main__":
     main()
