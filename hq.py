@@ -43,27 +43,58 @@ class OCR:
                 'hq.png'
             ])
             self.img = Image.open('hq.png')
-            os.remove('hq.png')
+            print(time.time())
 
-            self.question = self.img.crop((self.q_x, self.q_y, self.q_width, self.q_height))
-            self.answer_1 = self.img.crop((self.a_x, self.a1_y, self.a_width, self.a1_height))
-            self.answer_2 = self.img.crop((self.a_x, self.a2_y, self.a_width, self.a2_height))
-            self.answer_3 = self.img.crop((self.a_x, self.a3_y, self.a_width, self.a3_height))
+            self.q_img = self.img.crop((self.q_x, self.q_y, self.q_width, self.q_height))
+            self.a_img_1 = self.img.crop((self.a_x, self.a1_y, self.a_width, self.a1_height))
+            self.a_img_2 = self.img.crop((self.a_x, self.a2_y, self.a_width, self.a2_height))
+            self.a_img_3 = self.img.crop((self.a_x, self.a3_y, self.a_width, self.a3_height))
 
-            self.question.save("q.png")
-            self.answer_1.save("a1.png")
-            self.answer_2.save("a2.png")
-            self.answer_3.save("a3.png")
-
+            self.q_img.save("q.png")
+            self.a_img_1.save("a1.png")
+            self.a_img_2.save("a2.png")
+            self.a_img_3.save("a3.png")
 
     def ocr_image(self):
-        pass
+        self.q = pytesseract.image_to_string(self.q_img)
+        self.a_1 = pytesseract.image_to_string(self.a_img_1)
+        self.a_2 = pytesseract.image_to_string(self.a_img_2)
+        self.a_3 = pytesseract.image_to_string(self.a_img_3)
+
+    def print_ocr(self):
+        print("Question:")
+        print(self.q)
+        print("")
+        print("Answer 1:")
+        print(self.a_1)
+        print("")
+        print("Answer 2:")
+        print(self.a_2)
+        print("")
+        print("Answer 3:")
+        print(self.a_3)
+
+    def del_image(self):
+        os.remove('hq.png')
+        os.remove('q.png')
+        os.remove('a1.png')
+        os.remove('a2.png')
+        os.remove('a3.png')
+
+    def run(self):
+        print(time.time())
+        self.get_quicktime_image()
+        print(time.time())
+        self.ocr_image()
+        print(time.time())
+        self.print_ocr()
+        print(time.time())
+        self.del_image()
+        print(time.time())
 
 def main():
     ocr = OCR()
-    print(time.time())
-    ocr.get_quicktime_image()
-    print(time.time())
+    ocr.run()
 
 
 if __name__ == "__main__":
