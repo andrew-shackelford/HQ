@@ -8,7 +8,81 @@ import threading
 import Queue
 import requests
 from bs4 import BeautifulSoup
-import argparse
+
+class color:
+   PURPLE = '\033[95m'
+   CYAN = '\033[96m'
+   DARKCYAN = '\033[36m'
+   BLUE = '\033[94m'
+   GREEN = '\033[92m'
+   YELLOW = '\033[93m'
+   RED = '\033[91m'
+   BOLD = '\033[1m'
+   UNDERLINE = '\033[4m'
+   END = '\033[0m'
+
+class Printer():
+    def __init__(self):
+        pass
+
+    def print_statement(self, answer, percent, snippet, c, header=True):
+        if header:
+            print(c + answer + ": " + color.BOLD + color.UNDERLINE + str(percent) + "%" + color.END + c)
+        else:
+            print(c),
+        snippet = snippet.replace(color.END, color.END + c)
+        print(snippet)
+        print(color.END)
+
+    def print_all(self, q, a1, a2, a3, results):
+        new_a1_snips = []
+        new_a2_snips = []
+        new_a3_snips = []
+        for snip in results['a1_snip']:
+            for token in results['q_tokens']:
+                if token in snip and len(token) > 3:
+                    snip = snip.replace(token, color.BOLD + color.UNDERLINE + token + color.END)
+            new_a1_snips.append(snip)
+        for snip in results['a2_snip']:
+            for token in results['q_tokens']:
+                if token in snip and len(token) > 3:
+                    snip = snip.replace(token, color.BOLD + color.UNDERLINE + token + color.END)
+            new_a2_snips.append(snip)
+        for snip in results['a3_snip']:
+            for token in results['q_tokens']:
+                if token in snip and len(token) > 3:
+                    snip = snip.replace(token, color.BOLD + color.UNDERLINE + token + color.END)
+            new_a3_snips.append(snip)
+
+        if results['a1_per'] > 50:
+            self.print_statement(a1, results['a1_per'], new_a1_snips[0], color.BLUE)
+            self.print_statement(a1, results['a1_per'], results['t1_snip'][0], color.BLUE)
+        elif results['a1_per'] > 25:
+            self.print_statement(a1, results['a1_per'], new_a1_snips[0], color.DARKCYAN)
+            self.print_statement(a1, results['a1_per'], results['t1_snip'][0], color.DARKCYAN)
+        else:
+            self.print_statement(a1, results['a1_per'], new_a1_snips[0], color.RED)
+            self.print_statement(a1, results['a1_per'], results['t1_snip'][0], color.RED)
+
+        if results['a2_per'] > 50:
+            self.print_statement(a2, results['a2_per'], new_a2_snips[0], color.BLUE)
+            self.print_statement(a2, results['a2_per'], results['t2_snip'][0], color.BLUE)
+        elif results['a2_per'] > 25:
+            self.print_statement(a2, results['a2_per'], new_a2_snips[0], color.DARKCYAN)
+            self.print_statement(a2, results['a2_per'], results['t2_snip'][0], color.DARKCYAN)
+        else:
+            self.print_statement(a2, results['a2_per'], new_a2_snips[0], color.RED)
+            self.print_statement(a2, results['a2_per'], results['t2_snip'][0], color.RED)
+
+        if results['a3_per'] > 50:
+            self.print_statement(a3, results['a3_per'], new_a3_snips[0], color.BLUE)
+            self.print_statement(a3, results['a3_per'], results['t3_snip'][0], color.BLUE)
+        elif results['a3_per'] > 25:
+            self.print_statement(a3, results['a3_per'], new_a3_snips[0], color.DARKCYAN)
+            self.print_statement(a3, results['a3_per'], results['t3_snip'][0], color.DARKCYAN)
+        else:
+            self.print_statement(a3, results['a3_per'], new_a3_snips[0], color.RED)
+            self.print_statement(a3, results['a3_per'], results['t3_snip'][0], color.RED)
 
 class Search(threading.Thread):
     def __init__(self, q, id):
@@ -23,8 +97,11 @@ class Search(threading.Thread):
 
             soup = BeautifulSoup(r.text, "lxml")
             res = soup.find("div", {"id": "resultStats"})
-            self.q.put(res.text)
-            time.sleep(1) #allow for us to pick image back up
+            snippets = []
+            for s in soup.find_all("span", {"class" : "st"}):
+                snippets.append(s.text)
+            self.q.put((res.text, snippets))
+            time.sleep(1) #allow for us to pick data back up
 
     def stop(self):
         self.should_run = False
@@ -97,17 +174,25 @@ class Answer:
         self.a1_que = Queue.Queue()
         self.a2_que = Queue.Queue()
         self.a3_que = Queue.Queue()
+        self.t1_que = Queue.Queue()
+        self.t2_que = Queue.Queue()
+        self.t3_que = Queue.Queue()
 
         self.a1_thread = Search(self.a1_que, "a1")
         self.a2_thread = Search(self.a2_que, "a2")
         self.a3_thread = Search(self.a3_que, "a3")
+        self.t1_thread = Search(self.t1_que, "t1")
+        self.t2_thread = Search(self.t2_que, "t2")
+        self.t3_thread = Search(self.t3_que, "t3")
 
         self.a1_thread.start()
         self.a2_thread.start()
         self.a3_thread.start()
+        self.t1_thread.start()
+        self.t2_thread.start()
+        self.t3_thread.start()
 
-    def num_hits(self, q, a1, a2, a3):
-        print(time.time())
+    def num_hits(self, q, a1, a2, a3, term):
         tokens = nltk.word_tokenize(q)
         tagged = nltk.pos_tag(tokens)
         nouns = [word for word,pos in tagged \
@@ -118,25 +203,55 @@ class Answer:
         self.a1_que.put(q_nouns + ' ' + a1)
         self.a2_que.put(q_nouns + ' ' + a2)
         self.a3_que.put(q_nouns + ' ' + a3)
+        self.t1_que.put(term + ' ' + a1)
+        self.t2_que.put(term + ' ' + a2)
+        self.t3_que.put(term + ' ' + a3)
 
         time.sleep(0.1) # allow time for threads to get images
 
-        self.a1 = int(self.a1_que.get().replace(",", "").split()[1])
-        self.a2 = int(self.a2_que.get().replace(",", "").split()[1])
-        self.a3 = int(self.a3_que.get().replace(",", "").split()[1])
+        self.a1_hits, self.a1_snippets = self.a1_que.get()
+        self.a2_hits, self.a2_snippets = self.a2_que.get()
+        self.a3_hits, self.a3_snippets = self.a3_que.get()
+        self.t1_hits, self.t1_snippets = self.t1_que.get()
+        self.t2_hits, self.t2_snippets = self.t2_que.get()
+        self.t3_hits, self.t3_snippets = self.t3_que.get()
 
-        self.sum = float(self.a1 + self.a2 + self.a3)
-        self.a1_per = round(float(self.a1*100)/self.sum, 2)
-        self.a2_per = round(float(self.a2*100)/self.sum, 2)
-        self.a3_per = round(float(self.a3*100)/self.sum, 2)
+        self.a1 = [int(s) for s in self.a1_hits.replace(",", "").split() if s.isdigit()][0]
+        self.a2 = [int(s) for s in self.a2_hits.replace(",", "").split() if s.isdigit()][0]
+        self.a3 = [int(s) for s in self.a3_hits.replace(",", "").split() if s.isdigit()][0]
+        self.t1 = [int(s) for s in self.t1_hits.replace(",", "").split() if s.isdigit()][0]
+        self.t2 = [int(s) for s in self.t2_hits.replace(",", "").split() if s.isdigit()][0]
+        self.t3 = [int(s) for s in self.t3_hits.replace(",", "").split() if s.isdigit()][0]
+
+        self.a_sum = float(self.a1 + self.a2 + self.a3)
+        self.a1_per = round(float(self.a1*100)/self.a_sum, 2)
+        self.a2_per = round(float(self.a2*100)/self.a_sum, 2)
+        self.a3_per = round(float(self.a3*100)/self.a_sum, 2)
+
+        self.t_sum = float(self.t1 + self.t2 + self.t3)
+        self.t1_per = round(float(self.t1*100)/self.t_sum, 2)
+        self.t2_per = round(float(self.t2*100)/self.t_sum, 2)
+        self.t3_per = round(float(self.t3*100)/self.t_sum, 2)
 
         return {'a1' : self.a1,
                 'a2' : self.a2,
                 'a3' : self.a3,
-                'sum' : self.sum,
+                'a_sum' : self.a_sum,
                 'a1_per' : self.a1_per,
                 'a2_per' : self.a2_per,
-                'a3_per' : self.a3_per}
+                'a3_per' : self.a3_per,
+                'a1_snip' : self.a1_snippets,
+                'a2_snip' : self.a2_snippets,
+                'a3_snip' : self.a3_snippets,
+                't_sum' : self.t_sum,
+                't1_per' : self.t1_per,
+                't2_per' : self.t2_per,
+                't3_per' : self.t3_per,
+                't1_snip' : self.t1_snippets,
+                't2_snip' : self.t2_snippets,
+                't3_snip' : self.t3_snippets,
+                'q_tokens' : tokens,
+                }
 
     def stop(self):
         self.a1_thread.stop()
@@ -149,6 +264,7 @@ class Helper:
     def __init__(self):
         self.imager = Imager()
         self.answer = Answer()
+        self.printer = Printer()
 
         self.q_que = Queue.Queue()
         self.a1_que = Queue.Queue()
@@ -192,8 +308,11 @@ class Helper:
         print(self.a2 + ": " + str(self.percent_hits['a2_per']))
         print(self.a3 + ": " + str(self.percent_hits['a3_per']))
 
-    def search_hits(self):
-        self.percent_hits = self.answer.num_hits(self.q, self.a1, self.a2, self.a3)
+    def search_hits(self, term):
+        self.percent_hits = self.answer.num_hits(self.q, self.a1, self.a2, self.a3, term)
+
+    def print_all(self):
+        self.printer.print_all(self.q, self.a1, self.a2, self.a3, self.percent_hits)
 
     def stop(self):
         self.q_thread.stop()
@@ -206,11 +325,14 @@ def main():
     helper = Helper()
 
     while True:
-        waiting = raw_input()
+        term = raw_input()
+        if term == 'q':
+            os._exit(1) # ugly and terrible but whatever
         helper.run_ocr()
         #helper.print_ocr()
-        helper.search_hits()
-        helper.print_hits()
+        helper.search_hits(term)
+        #helper.print_hits()
+        helper.print_all()
 
 if __name__ == "__main__":
     main()
